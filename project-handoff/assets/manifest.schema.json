@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool_version",
+    "snapshot_id",
+    "parent_snapshot_id",
+    "identity",
+    "captured_started_at",
+    "captured_ended_at",
+    "code_fingerprint",
+    "stability",
+    "readiness",
+    "portability",
+    "exclusions",
+    "gaps",
+    "required_capabilities",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "tool_version": {
+      "type": "string"
+    },
+    "snapshot_id": {
+      "type": "string"
+    },
+    "parent_snapshot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "project_id",
+        "workspace_id",
+        "stream_id"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "captured_started_at": {
+      "type": "string"
+    },
+    "captured_ended_at": {
+      "type": "string"
+    },
+    "code_fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stability": {
+      "enum": [
+        "double_checked"
+      ]
+    },
+    "readiness": {
+      "enum": [
+        "ready",
+        "conditional",
+        "blocked"
+      ]
+    },
+    "portability": {
+      "enum": [
+        "local_only",
+        "portable_with_prerequisites",
+        "self_contained"
+      ]
+    },
+    "exclusions": {
+      "type": "array"
+    },
+    "gaps": {
+      "type": "array"
+    },
+    "required_capabilities": {
+      "type": "array"
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "size",
+          "sha256",
+          "purpose",
+          "type",
+          "mode",
+          "encoding",
+          "original"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "type": {
+            "const": "file"
+          },
+          "mode": {
+            "const": "0644"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "binary"
+            ]
+          },
+          "original": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

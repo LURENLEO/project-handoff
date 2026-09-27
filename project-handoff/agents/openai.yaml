@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Handoff"
+  short_description: "保存可核验的项目交接包，保留未提交工作并引导下一位 agent 接续开发"
+  default_prompt: "使用 $project-handoff 保存当前项目的交接信息，并生成下一位 agent 的接手提示词。"

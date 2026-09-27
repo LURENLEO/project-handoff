@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.test-deps/
+.venv/
+venv/
+test-results.json
+*.log
+.handoff/
+.staging/

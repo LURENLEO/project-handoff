@@ -1,0 +1,266 @@
+{
+  "intent": {
+    "id": "I-1",
+    "statement": "Finish arithmetic addition while preserving existing behavior",
+    "source": {
+      "kind": "user_message",
+      "ref": "Visible fixture request: complete add(a, b) and verify"
+    },
+    "observed_at": "2026-09-27T09:31:30.213634+00:00",
+    "confidence": "high",
+    "original_goal": "Complete add(a, b)",
+    "current_goal": "Complete add(a, b) and verify negative operands",
+    "acceptance": [
+      "add(2, 3) == 5",
+      "add(-2, 3) == 1",
+      "Existing subtract function remains unchanged"
+    ],
+    "scope": [
+      "calculator.py",
+      "test_calculator.py"
+    ],
+    "non_goals": [
+      "No dependencies, remote actions or broad refactoring"
+    ],
+    "corrections": []
+  },
+  "constraints": [
+    {
+      "id": "C-1",
+      "statement": "Preserve subtract(a, b) and the user's notes.txt",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high"
+    }
+  ],
+  "authorization": [
+    {
+      "id": "A-1",
+      "statement": "May edit calculator.py and run local unittest; no network or commits",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "actions": [
+        "edit",
+        "local_test"
+      ],
+      "scope": [
+        "calculator.py",
+        "test_calculator.py"
+      ]
+    }
+  ],
+  "project": [],
+  "instructions": [],
+  "architecture": [],
+  "work_items": [
+    {
+      "id": "T-1",
+      "statement": "Implement add",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "status": "implemented_unverified",
+      "acceptance": [
+        "add(2, 3) == 5",
+        "add(-2, 3) == 1",
+        "Existing subtract function remains unchanged"
+      ],
+      "done": [
+        "Function signature and docstring exist"
+      ],
+      "remaining": [
+        "Replace placeholder body",
+        "Run tests"
+      ],
+      "files": [
+        {
+          "path": "calculator.py",
+          "symbol": "add"
+        }
+      ],
+      "depends_on": [],
+      "evidence_ids": [
+        "V-1"
+      ]
+    }
+  ],
+  "in_progress": [
+    {
+      "id": "P-1",
+      "statement": "calculator.py:add still returns None; replace only its body",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "path": "calculator.py",
+      "symbol": "add",
+      "workaround": null
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "statement": "Use Python arithmetic; no conversion or extra libraries",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "reason": "Inputs are numbers",
+      "alternatives": [
+        "String conversion rejected: changes semantics"
+      ],
+      "reopen_when": "User requests coercion"
+    }
+  ],
+  "working_copy": [],
+  "validation": [
+    {
+      "id": "V-1",
+      "statement": "Tests have not been run after placeholder work",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "result": "not_run",
+      "freshness": "unknown",
+      "started_at": null,
+      "ended_at": null,
+      "exit_code": null,
+      "log": null,
+      "code_fingerprint": null,
+      "environment": "Python 3.11+",
+      "command": {
+        "argv": [
+          "python",
+          "-m",
+          "unittest",
+          "-v"
+        ],
+        "cwd_ref": "project",
+        "env_names": [],
+        "purpose": "Validate arithmetic behavior",
+        "side_effects": "May create __pycache__"
+      }
+    }
+  ],
+  "environment": [],
+  "external_state": [],
+  "assets": [],
+  "collaboration": [],
+  "next_actions": [
+    {
+      "id": "N-1",
+      "statement": "Complete arithmetic implementation",
+      "source": {
+        "kind": "user_message",
+        "ref": "Visible fixture request: complete add(a, b) and verify"
+      },
+      "observed_at": "2026-09-27T09:31:30.213634+00:00",
+      "confidence": "high",
+      "task_id": "T-1",
+      "action": "Read current project instructions, replace calculator.py:add placeholder with numeric addition, then run local unittest",
+      "preconditions": [
+        "Verify package and compare current files",
+        "Preserve user's notes.txt changes"
+      ],
+      "files": [
+        {
+          "path": "calculator.py",
+          "symbol": "add"
+        }
+      ],
+      "expected_result": "All arithmetic tests pass and subtract/notes remain unchanged",
+      "validation": "python -m unittest -v",
+      "on_failure": "Record failing assertion and investigate add; preserve existing user changes"
+    }
+  ],
+  "gaps": [],
+  "schema_version": "1.0.0",
+  "observed_fingerprint": null,
+  "coverage": {
+    "intent": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "constraints": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "authorization": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "project": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "instructions": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "architecture": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "work_items": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "in_progress": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "decisions": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "working_copy": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "validation": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "environment": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "external_state": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "assets": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "collaboration": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    },
+    "next_actions": {
+      "status": "complete",
+      "reason": "Checked against visible fixture request and project files"
+    },
+    "gaps": {
+      "status": "not_applicable",
+      "reason": "Fixture has no entries in this domain; explicitly checked"
+    }
+  }
+}
