@@ -1,6 +1,6 @@
 # Project Handoff
 
-[![Tests](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml/badge.svg)](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml)
+[![Tests](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
