@@ -3,10 +3,11 @@ import os
 import platform
 import socket
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from .common import HandoffError, VERSION, digest, encoded, fault, no_links, now, read_json, replace, safe_path, sync_dir, write_bytes, result
+from .common import HandoffError, REVIEW_GAPS, VERSION, TOOL_VERSION, digest, encoded, fault, no_links, now, read_json, replace, safe_path, sync_dir, write_bytes, result
 from .collect import collect
-from .context import prepare_context, readiness, render, set_freshness
+from .context import check_continuity, prepare_context, readiness, render, set_freshness
 from .redact import clean
 from .validate import verify_snapshot
 
@@ -29,8 +30,11 @@ class Lock:
         return self
 
     def __exit__(self, *_):
-        if self.path.exists() and read_json(self.path).get("token") == self.token:
-            self.path.unlink()
+        try:
+            if self.path.exists() and read_json(self.path).get("token") == self.token:
+                self.path.unlink()
+        except OSError:
+            pass  # Lock removed externally; release is best-effort and must not mask the result.
 
 
 def locate(root, store=None, stream="default", create=False):
@@ -67,8 +71,12 @@ def locate(root, store=None, stream="default", create=False):
 
 
 def save(root, context_path, store=None, stream="default", include_ignored=(), max_file=None):
+    return publish(root, read_json(context_path), "save", store, stream, include_ignored, max_file)
+
+
+def publish(root, raw, operation="save", store=None, stream="default", include_ignored=(), max_file=None,
+            allow_semantic_reset=False, warnings=None, next_steps=None):
     root = Path(root).resolve()
-    raw = read_json(context_path)
     context, redacted = prepare_context(raw)
     store, folder, identity = locate(root, store, stream, create=True)
     with Lock(folder / ".writer.lock"):
@@ -77,8 +85,7 @@ def save(root, context_path, store=None, stream="default", include_ignored=(), m
         if current.exists():
             _, old, previous, _ = verify_snapshot(current)
             parent = old["snapshot_id"]
-        context, redacted = prepare_context(raw, previous)
-        from datetime import datetime, timezone
+        check_continuity(context, previous, allow_semantic_reset)
         sid = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
         stage = folder / ".staging" / sid
         stage.mkdir(parents=True)
@@ -113,9 +120,11 @@ def save(root, context_path, store=None, stream="default", include_ignored=(), m
         if redacted:
             capture_gaps.append({"kind": "redacted_context", "reason": "Sensitive semantic values filtered before persistence; review affected facts"})
         ready, gaps = readiness(context, fp, capture_gaps)
-        portability = "local_only" if capture_gaps else "self_contained"
+        # Review-only gaps ask for human/agent attention but do not reduce restore capability.
+        restore_blockers = [g for g in capture_gaps if g.get("kind") not in REVIEW_GAPS]
+        portability = "local_only" if restore_blockers else "self_contained"
         context.update(schema_version=VERSION, snapshot_id=sid, parent_snapshot_id=parent, identity=identity)
-        manifest = dict(schema_version=VERSION, tool_version=VERSION, snapshot_id=sid, parent_snapshot_id=parent,
+        manifest = dict(schema_version=VERSION, tool_version=TOOL_VERSION, snapshot_id=sid, parent_snapshot_id=parent,
                         identity=identity, captured_started_at=started, captured_ended_at=now(), code_fingerprint=fp,
                         stability="double_checked", readiness=ready, portability=portability, exclusions=capture["exclusions"],
                         gaps=gaps, required_capabilities=[], files={}, capture_platform=platform.system(),
@@ -143,10 +152,12 @@ def save(root, context_path, store=None, stream="default", include_ignored=(), m
         fault("before_pointer")
         replace(temp, current)
         fault("after_pointer")
-    return result("save", integrity="valid", readiness=ready, portability=portability, snapshot_path=str(final),
+    return result(operation, integrity="valid", readiness=ready, portability=portability, snapshot_path=str(final),
                   current_path=str(current), gaps=gaps, code_fingerprint=fp,
-                  warnings=["Double checking is not an OS snapshot", "Add the handoff store to ignore rules if appropriate; no rules were modified"],
-                  next_steps=["Give NEXT_AGENT.md and this snapshot to the next agent"])
+                  warnings=warnings if warnings is not None else
+                  ["Double checking is not an OS snapshot", "Add the handoff store to ignore rules if appropriate; no rules were modified"],
+                  next_steps=next_steps if next_steps is not None else
+                  ["Give NEXT_AGENT.md and this snapshot to the next agent"])
 
 
 def inspect(root, store=None, stream="default"):

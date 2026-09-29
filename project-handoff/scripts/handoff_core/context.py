@@ -4,7 +4,7 @@ from .redact import clean
 
 DOMAINS = ("intent constraints authorization project instructions architecture work_items in_progress "
            "decisions working_copy validation environment external_state assets collaboration next_actions gaps").split()
-SOURCE_KINDS = {"user_message", "file", "tool_result", "external_reference", "agent_assessment"}
+SOURCE_KINDS = {"user_message", "file", "tool_result", "external_reference", "agent_assessment", "draft_template"}
 WORK_STATUS = {"pending", "in_progress", "blocked", "implemented_unverified", "verified", "cancelled"}
 
 
@@ -24,6 +24,12 @@ def validate_context(c):
                 and isinstance(coverage.get("reason"), str) and coverage["reason"].strip(),
                 "Missing coverage/reason: " + domain)
         require(isinstance(c[domain], dict if domain == "intent" else list), "Wrong domain type: " + domain)
+    # draft_template facts are scaffolding from `draft`; semantics must come from the visible conversation.
+    # Checked before field-level rules so an unfilled draft reports every placeholder domain at once.
+    placeholders = sorted({d for d in DOMAINS if any(
+        (v.get("source") or {}).get("kind") == "draft_template" or str(v.get("statement", "")).startswith("TODO:")
+        for v in ([c[d]] if d == "intent" else c[d]))})
+    require(not placeholders, "Draft placeholders must be replaced before saving: " + ", ".join(placeholders))
     intent = c["intent"]
     for key in ("original_goal", "current_goal"):
         require(isinstance(intent.get(key), str) and intent[key].strip(), "intent requires " + key)
@@ -79,15 +85,21 @@ def validate_context(c):
     return c
 
 
+def check_continuity(c, previous, allow_semantic_reset=False):
+    # Full semantic state is supplied each time. Refuse accidental history loss;
+    # `quick` declares the reset explicitly via allow_semantic_reset + unknown coverage.
+    if not previous or allow_semantic_reset:
+        return
+    for domain in ("constraints", "work_items", "decisions", "gaps"):
+        old_ids = {v["id"] for v in previous[domain]}
+        require(old_ids <= {v["id"] for v in c[domain]}, "Prior stable IDs omitted from " + domain + "; retain with resolved/superseded status")
+
+
 def prepare_context(raw, previous=None):
     c = clean(deepcopy(raw))
     redacted = c != raw
     validate_context(c)
-    # Full semantic state is supplied each time. Refuse accidental history loss.
-    if previous:
-        for domain in ("constraints", "work_items", "decisions", "gaps"):
-            old_ids = {v["id"] for v in previous[domain]}
-            require(old_ids <= {v["id"] for v in c[domain]}, "Prior stable IDs omitted from " + domain + "; retain with resolved/superseded status")
+    check_continuity(c, previous)
     return c, redacted
 
 

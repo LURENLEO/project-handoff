@@ -9,9 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 MAX_FILE = 64 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024
 MAX_FILES = 20000
+# Gap kinds that ask for review but do not by themselves reduce restore capability.
+REVIEW_GAPS = {"secret_suspicious", "secret_allowlisted"}
 
 
 class HandoffError(Exception):
@@ -79,7 +82,11 @@ def no_links(path):
 def run_git(root, *args, data=None, check=True):
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
-    cmd = ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", str(root), *args]
+    cmd = ["git", "-c", "core.fsmonitor=false"]
+    if os.name != "nt":
+        # /dev/null is a POSIX path; hooks are never invoked by capture/restore anyway.
+        cmd += ["-c", "core.hooksPath=/dev/null"]
+    cmd += ["-C", str(root), *args]
     try:
         result = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     except FileNotFoundError as exc:

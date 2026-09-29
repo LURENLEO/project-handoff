@@ -56,7 +56,8 @@
                 "file",
                 "tool_result",
                 "external_reference",
-                "agent_assessment"
+                "agent_assessment",
+                "draft_template"
               ]
             },
             "ref": {

@@ -12,7 +12,7 @@ def generate():
     fact = {"type": "object", "required": ["id", "statement", "source", "observed_at", "confidence"], "properties": {
         "id": {"type": "string", "minLength": 1}, "statement": {"type": "string", "minLength": 1},
         "source": {"type": "object", "required": ["kind", "ref"], "properties": {
-            "kind": {"enum": ["user_message", "file", "tool_result", "external_reference", "agent_assessment"]}, "ref": {"type": "string", "minLength": 1}}},
+            "kind": {"enum": ["user_message", "file", "tool_result", "external_reference", "agent_assessment", "draft_template"]}, "ref": {"type": "string", "minLength": 1}}},
         "observed_at": {"type": "string", "minLength": 1}, "confidence": {"enum": ["high", "medium", "low", "unknown"]},
         "evidence_ids": {"type": "array", "items": {"type": "string"}}, "superseded_by": {"type": ["string", "null"]}}}
     coverage = {"type": "object", "required": DOMAINS, "properties": {d: {"type": "object", "required": ["status", "reason"], "properties": {

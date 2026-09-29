@@ -3,6 +3,7 @@ from pathlib import Path
 from .collect import collect
 from .common import HandoffError, encoded, now, result, write_bytes
 from .context import readiness, set_freshness
+from .diff import drift
 from .store import locate
 from .validate import verify_snapshot
 
@@ -26,14 +27,7 @@ def resume(root, snapshot, store=None, stream="default", receipt=None, read_only
         raise HandoffError("Project identity cannot be corroborated; supply correct root or inspect independently", 4)
     if not id_match and not allow_remap:
         raise HandoffError("Workspace is not registered to this package; inspect then use --allow-remap for an authorized clone", 4)
-    changes = [{"path": p, "before": old_files.get(p), "current": new_files.get(p)}
-               for p in sorted(old_files.keys() | new_files.keys()) if old_files.get(p) != new_files.get(p)]
-    git_changes = []
-    for key in ("head", "branch", "operations", "special_flags"):
-        if old_git and old_git.get(key) != new_git.get(key):
-            git_changes.append(key)
-    if saved["index"] != current["index"]:
-        git_changes.append("index")
+    changes, git_changes = drift(saved, current)
     gaps = list(manifest["gaps"])
     if changes or git_changes:
         gaps.append({"kind": "drift", "reason": "Review changes before affected actions; all current files preserved"})
@@ -47,7 +41,12 @@ def resume(root, snapshot, store=None, stream="default", receipt=None, read_only
     receipt_path = None
     warnings = []
     if not read_only:
-        destination = Path(receipt) if receipt else folder / "receipts" / (uuid.uuid4().hex + ".json") if folder else None
+        if receipt:
+            destination = Path(receipt)
+        elif folder:
+            destination = folder / "receipts" / (uuid.uuid4().hex + ".json")
+        else:
+            destination = None
         if destination:
             try:
                 write_bytes(destination, encoded(observation))
