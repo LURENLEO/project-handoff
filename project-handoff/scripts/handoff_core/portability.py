@@ -6,14 +6,14 @@ import tempfile
 import uuid
 import zipfile
 from pathlib import Path
-from .common import HandoffError, MAX_FILE, MAX_FILES, MAX_TOTAL, VERSION, digest, encoded, no_links, read_json, replace, result, run_git, safe_path, safe_source_path, write_bytes
+from .common import HandoffError, MAX_FILE, MAX_FILES, MAX_TOTAL, REVIEW_GAPS, VERSION, digest, encoded, no_links, read_json, replace, result, run_git, safe_path, safe_source_path, write_bytes
 from .store import locate
 from .validate import verify_snapshot
 
 
 def blockers(capture):
     found = [x for x in capture["exclusions"] if x["required_for_restore"] or x["layer"] in ("baseline", "index")]
-    found += capture["gaps"]
+    found += [g for g in capture["gaps"] if g.get("kind") not in REVIEW_GAPS]
     git = capture["git"]
     if git and git.get("object_format") != "sha1":
         found.append({"reason": "Git SHA-256 restoration not supported in 1.0"})
@@ -135,9 +135,9 @@ def baseline_check(capture, baseline):
     if not baseline:
         raise HandoffError("Baseline archive requires --baseline <local-repository>; obtain exact objects yourself, no fetch is performed", 4)
     baseline = Path(baseline).resolve()
+    # Index-only blobs need not be in baseline repository.
+    baseline_oids = {x["oid"] for x in capture["baseline"]}
     for oid, item in capture["objects"].items():
-        # Index-only blobs need not be in baseline repository.
-        baseline_oids = {x["oid"] for x in capture["baseline"]}
         if item["type"] in ("commit", "tree") or oid in baseline_oids:
             data = run_git(baseline, "cat-file", item["type"], oid).stdout
             if digest(data) != item["payload"]:

@@ -4,7 +4,7 @@ import shutil
 import stat
 from pathlib import Path
 from .common import HandoffError, MAX_FILE, MAX_TOTAL, digest, encoded, run_git, safe_source_path
-from .redact import clean_text, contains_secret, sensitive_path
+from .redact import allowlisted, assignment_secret, clean_text, literal_secret, load_redact_config, sensitive_path
 
 SKIP_DIRS = {"node_modules", "__pycache__", ".venv", "venv", ".cache", "dist", "build", ".pytest_cache"}
 
@@ -40,8 +40,10 @@ def git_info(root):
 def collect(root, store=None, include_ignored=(), max_file=MAX_FILE):
     root = Path(root).resolve()
     store = Path(store).resolve() if store else root / ".handoff"
+    redact_config = load_redact_config(store)
     blobs, exclusions, gaps, objects = {}, [], [], {}
     total = 0
+    flagged = set()
 
     def exclude(path, reason, layer, required=True):
         exclusions.append({"path": clean_text(path) if isinstance(path, str) else path,
@@ -66,9 +68,21 @@ def collect(root, store=None, include_ignored=(), max_file=MAX_FILE):
 
     def payload(data, path, layer):
         nonlocal total
-        if contains_secret(data):
+        if allowlisted(path, redact_config["allow_globs"]):
+            if path not in flagged:
+                flagged.add(path)
+                gaps.append({"kind": "secret_allowlisted", "path": path,
+                             "reason": "redact.json allow_globs matched; secret scan skipped for review"})
+        elif literal_secret(data):
             exclude(path, "Possible credential detected; original bytes excluded", layer)
             return None
+        elif redact_config["strict"] and assignment_secret(data):
+            exclude(path, "Possible credential detected; original bytes excluded", layer)
+            return None
+        elif assignment_secret(data) and path not in flagged:
+            flagged.add(path)
+            gaps.append({"kind": "secret_suspicious", "path": path,
+                         "reason": "Assignment-shaped secret pattern matched; bytes included for review"})
         h = digest(data)
         if h not in blobs:
             total += len(data)

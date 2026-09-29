@@ -1,4 +1,6 @@
 import copy
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -13,7 +15,13 @@ from fixtures import context, fact
 from handoff_core.collect import collect
 from handoff_core.common import HandoffError, digest, encoded, run_git
 from handoff_core.context import validate_context
+from handoff_core.diff import diff
+from handoff_core.doctor import doctor
+from handoff_core.draft import draft
+from handoff_core.gc import gc
 from handoff_core.portability import export, restore
+from handoff_core.quick import quick
+from handoff_core.report import report
 from handoff_core.resume import resume
 from handoff_core.store import Lock, inspect, save
 from handoff_core.validate import verify_snapshot
@@ -447,6 +455,141 @@ class HandoffTests(unittest.TestCase):
         r = self.save(c)
         self.assertEqual(r["portability"], "local_only")
         self.assertTrue(any(g.get("kind") == "missing_asset" for g in r["gaps"]))
+
+
+    def test_quick_save_is_conditional_and_resumable(self):
+        self.put("code.txt", "quick working state\n")
+        q = quick(self.root, "Stop after wiring the parser; tests not run")
+        self.assertEqual(q["readiness"], "conditional")
+        verify_snapshot(q["current_path"])
+        _, m, state, _ = verify_snapshot(q["snapshot_path"])
+        self.assertEqual(state["intent"]["current_goal"], "Stop after wiring the parser; tests not run")
+        self.assertTrue(all(v["status"] in ("unknown", "partial") for v in state["coverage"].values()))
+        resumed = resume(self.root, q["snapshot_path"], read_only=True)
+        self.assertTrue(any(g.get("kind") == "coverage" for g in resumed["gaps"]))
+        # quick after a full save declares the semantic reset instead of losing history silently.
+        self.save()
+        q2 = quick(self.root, "second quick note")
+        verify_snapshot(q2["current_path"])
+        with self.assertRaises(HandoffError):
+            quick(self.root, "   ")
+
+    def test_draft_placeholders_block_save_until_filled(self):
+        self.put("code.txt", "data\n")
+        d = draft(self.root, out=str(self.home / "draft.json"))
+        self.assertEqual(d["readiness"], "not_applicable")
+        self.assertIn("next_actions", d["todo_domains"])
+        value = json.loads((self.home / "draft.json").read_text(encoding="utf-8"))
+        self.assertTrue(any(f["source"]["kind"] == "draft_template" for f in value["next_actions"]))
+        with self.assertRaises(HandoffError) as exc:
+            save(self.root, self.home / "draft.json")
+        self.assertIn("Draft placeholders", str(exc.exception))
+        with self.assertRaises(HandoffError):
+            draft(self.root, out=str(self.home / "draft.json"))
+        filled = context(d["code_fingerprint"])
+        self.context_path.write_bytes(encoded(filled))
+        r = save(self.root, self.context_path)
+        self.assertEqual(r["readiness"], "ready")
+        c = context()
+        c["constraints"][0]["statement"] = "TODO: fill me later"
+        with self.assertRaises(HandoffError):
+            validate_context(c)
+
+    def test_diff_matches_resume_readonly_drift(self):
+        self.init_git()
+        r = self.save(context(collect(self.root)[0]["fingerprint"]))
+        self.put("calculator.py", "local edit\n")
+        d = diff(r["snapshot_path"], self.root)
+        self.assertEqual(d["readiness"], "not_applicable")
+        self.assertEqual(d["change_count"], 1)
+        self.assertEqual(d["changes"][0]["path"], "calculator.py")
+        resumed = resume(self.root, r["snapshot_path"], read_only=True)
+        self.assertEqual(d["changes"], resumed["changes"])
+        self.assertEqual(d["git_changes"], resumed["git_changes"])
+
+    def test_gc_protects_current_chain_and_prunes_staging(self):
+        self.put("code.txt", "v1\n")
+        a = self.save()
+        self.put("code.txt", "v2\n")
+        b = self.save()
+        self.put("code.txt", "v3\n")
+        c = self.save()
+        with patch.dict(os.environ, HANDOFF_TEST_FAULT="write"):
+            with self.assertRaises(HandoffError):
+                self.save()
+        with patch.dict(os.environ, HANDOFF_TEST_FAULT="before_pointer"):
+            with self.assertRaises(HandoffError):
+                self.save()
+        g = gc(self.root, keep_last=1, dry_run=True)
+        self.assertEqual(len(g["candidates"]), 0)  # the newest orphan is kept by --keep-last 1
+        g = gc(self.root, prune_staging=True, dry_run=True)
+        self.assertEqual(len(g["candidates"]), 1)
+        self.assertEqual(len(g["staging_transactions"]), 1)
+        self.assertTrue(g["freed_bytes"] > 0)
+        g = gc(self.root, prune_staging=True, apply=True)
+        self.assertEqual(len(g["deleted"]), 1)
+        current = Path(c["current_path"])
+        verify_snapshot(current)
+        self.assertEqual(len(list((current.parent / "snapshots").iterdir())), 3)
+        self.assertFalse(list((current.parent / ".staging").iterdir()))
+        snapshots = current.parent / "snapshots"
+        self.assertIn(Path(a["snapshot_path"]).name, {p.name for p in snapshots.iterdir()})
+
+    def test_report_renders_and_refuses_overwrite(self):
+        self.put("code.txt", "data\n")
+        r = self.save()
+        out = self.home / "HANDOFF.md"
+        payload = report(r["current_path"], out=str(out))[0]
+        self.assertEqual(payload["readiness"], "not_applicable")
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("## 下一步", text)
+        self.assertIn("- [ ]", text)
+        self.assertIn("verify --snapshot", text)
+        with self.assertRaises(HandoffError):
+            report(r["current_path"], out=str(out))
+        _, markdown = report(r["current_path"], stdout=True)
+        self.assertIn("项目交接报告", markdown)
+        self.assertIn(Path(r["snapshot_path"]).name, markdown)
+
+    def test_doctor_reports_environment_and_store(self):
+        d = doctor()
+        self.assertEqual(d["readiness"], "not_applicable")
+        self.assertIn("python", {c["id"] for c in d["checks"]})
+        d2 = doctor(root=self.root)
+        self.assertTrue(any(c["id"] == "store_registered" for c in d2["checks"]))
+        self.save()
+        d3 = doctor(root=self.root)
+        current = next(c for c in d3["checks"] if c["id"] == "current_snapshot")
+        self.assertEqual(current["status"], "ok")
+
+    def test_secret_tiers_and_allowlist(self):
+        self.put("soft.txt", "api_key = config['default']\n")
+        r = self.save()
+        self.assertEqual(r["portability"], "self_contained")
+        _, m, _, capture = verify_snapshot(r["snapshot_path"])
+        self.assertTrue(any(g.get("kind") == "secret_suspicious" and g.get("path") == "soft.txt" for g in m["gaps"]))
+        self.assertIn("soft.txt", {x["path"] for x in capture["working"]})
+        self.put("hard.txt", "token = " + "sk-" + "abcdefgh12345678\n")
+        r = self.save(stream="hard")
+        self.assertEqual(r["portability"], "local_only")
+        store = self.root / ".handoff"
+        (store / "redact.json").write_bytes(encoded(dict(allow_globs=["hard.txt"], strict=False)))
+        r = self.save(stream="allowed")
+        self.assertEqual(r["portability"], "self_contained")
+        _, m, _, capture = verify_snapshot(r["snapshot_path"])
+        self.assertIn("hard.txt", {x["path"] for x in capture["working"]})
+        self.assertTrue(any(g.get("kind") == "secret_allowlisted" for g in m["gaps"]))
+
+    def test_cli_unexpected_error_still_json(self):
+        from handoff import main
+        with patch("handoff_core.doctor.doctor", side_effect=RuntimeError("boom")):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = main(["doctor"])
+        self.assertEqual(code, 1)
+        value = json.loads(buf.getvalue())
+        self.assertEqual(value["outcome"], "failed")
+        self.assertTrue(any("RuntimeError" in w for w in value["warnings"]))
 
 
 if __name__ == "__main__":
