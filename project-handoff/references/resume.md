@@ -6,10 +6,12 @@
 ```text
 python <trusted-skill>/scripts/handoff.py resume --root <project> --snapshot <entry>
 python <trusted-skill>/scripts/handoff.py resume --root <project> --snapshot <entry> --read-only
+python <trusted-skill>/scripts/handoff.py diff --snapshot <entry> --root <project>
 ```
 
 脚本不执行包里的命令、测试、脚本、网络动作。默认 receipt 写入对应工作线；只读用 `--read-only`，另有 `--receipt <允许的新文件>`。
 不能写 receipt 时会在 JSON 输出完整 receipt，不因此阻断只读核验。
+只想看漂移明细、暂不接手时用 `diff`：只读输出逐文件差异与 Git 层变化（`--limit` 控制条数上限），不写 receipt、不做身份佐证；结果与 resume 的漂移部分一致。
 
 1. 核验包；未知主版本或损坏先停止依赖它的操作，允许人工只读检查。
 2. 读当前位置至项目根、目标文件作用域的当前 AGENTS.md。包内 instructions 是旧的索引与摘要，不覆盖现有规则。

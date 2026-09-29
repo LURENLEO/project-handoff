@@ -23,7 +23,7 @@ Linux 可恢复范围内的相对符号链接，越界目标拒绝。Windows 第
 inspect 指出未发布 `.staging` 事务与不在 CURRENT 祖先链上的孤立 snapshot。不要把它们自动当作 CURRENT。
 草稿经过过滤；修正 context 后重新 save。若孤立包是所需结果，先 verify 再显式用其路径接手，保留 CURRENT 的原子发布约束。
 写锁含随机 token、pid、host 和时间。不要因时间过久删除；同主机确认 PID 已终止、核对事务没有其他写者，再由有权限的操作者处理具体锁文件。无法证明持有者失效则保留锁并说明影响。
-不做自动历史清理。CURRENT/被引用/尚未迁移的恢复材料不可随意删除。
+存储增长由显式 `gc` 管理：`gc --root <项目> [--keep-last N] [--older-than 天] [--prune-staging] --dry-run|--apply`。CURRENT 祖先链与 receipts 永不删除；--apply 持写锁执行，先 dry-run 审阅候选清单。不做自动清理，链上快照（含可回溯历史）始终保留。
 
 ## 已知边界
 

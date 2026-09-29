@@ -2,6 +2,8 @@
 
 `source.zip` 是用仓库 `project-handoff/tests/make_example.py` 从合成计算器项目真实生成的源码自包含包。包内保存的工作是：`add(a, b)` 仍返回 `None`，下一步应按项目规则完成加法并运行测试。示例没有真实凭据或个人聊天记录。
 
+[HANDOFF.example.md](HANDOFF.example.md) 是对同一快照运行 `report --stdout` 得到的人可读交接报告，可直接查看 `report` 的输出样式。
+
 在仓库根目录运行：
 
 ```text

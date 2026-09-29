@@ -3,67 +3,116 @@
 [![Tests](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/LURENLEO/project-handoff/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![GitHub release](https://img.shields.io/github/v/release/LURENLEO/project-handoff)](https://github.com/LURENLEO/project-handoff/releases)
 
 [English](README.md) · 简体中文
 
-Project Handoff 是一个离线 Codex Skill，用于保存项目开发交接包，并帮助下一位 agent 在核对当前项目状态后继续工作。它把语义状态与磁盘事实分开记录：任务、约束、决策、未知项由 agent 整理；Git HEAD、暂存区、工作树和未跟踪文件由 Python 工具采集。默认在项目内保存不可变快照，不需要模型 API、数据库或常驻服务。
+**给 AI 编程 agent 的可验证交接快照——相当于为"未提交的工作"做的 git push。**
 
-> 本项目基于 [MIT 许可证](LICENSE) 开源，可在署名的前提下自由使用、修改和再分发。
+你正在重构进行中：上下文窗口满了、会话中断了、或者要从一个编程 agent 换到另一个。`git stash` 抹平暂存/未暂存的区别、未跟踪文件各自飘散；`WIP` 提交污染历史；普通交接笔记只是谁也无法核验的散文。Project Handoff 把 **Git HEAD、暂存区、工作树和未跟踪文件逐字节**采集进不可变的哈希链快照，与 agent 写下的语义上下文并存。下一位 agent 先核验每一个字节，再继续工作。
 
-## 功能
+它是一个 Python 3.11+ 标准库 CLI 加一个 [agent skill](project-handoff/SKILL.md)。不需要模型 API、数据库或常驻服务。
 
-- `save`：保存语义状态和原始文件字节，分别保全 HEAD、index、工作树与未跟踪文件；原子更新 `CURRENT.json`。
-- `verify`：校验协议、引用、文件哈希和载荷完整性。
-- `inspect`：查看指定项目和工作线的当前快照、历史、孤立包和实际代码指纹。
-- `resume`：核对项目身份与交接后的改动，生成接手结果和 receipt；后续开发由 agent 在当前授权下执行。
-- `export` / `restore`：生成本地 ZIP 包，在空目录规划或执行恢复。`source` 模式保留声明范围的源码，`baseline` 模式额外核对指定本地 Git 基线。
+## 工作原理
 
-每次结果分别报告 `integrity`（包完整性）、`readiness`（当前接续条件）和 `portability`（携带能力）。缺失的上下文、排除的文件和不支持的 Git 状态会明确列出，不把有交接说明等同于可恢复。
-
-## 要求与安装
-
-- Python 3.11 或更新版本。核心运行仅使用 Python 标准库。
-- Git 项目需要系统 Git；无 Git 的普通目录也支持保存与源码恢复。
-- [Codex](https://learn.chatgpt.com/docs/build-skills) 可使用仓库中的 `project-handoff/SKILL.md`；CLI 也能单独运行。
-
-克隆或下载仓库后，将整个 `project-handoff` 文件夹复制到个人技能目录 `~/.agents/skills/project-handoff`，或放到项目的 `.agents/skills/project-handoff`。Windows 对应路径通常是 `%USERPROFILE%\.agents\skills\project-handoff`。Codex 使用时输入 `$project-handoff 保存交接` 或 `$project-handoff 接手并继续`。不要同时在个人级和项目级安装同名副本。
-
-安装后可先运行：
-
-```text
-python project-handoff/scripts/handoff.py --help
+```mermaid
+flowchart LR
+    A[Agent 会话] -->|save / quick| B[快照存储 .handoff/]
+    B -->|原子指针| C[不可变快照]
+    C --> D1["manifest.json（哈希链）"]
+    C --> D2["state.json（语义）"]
+    C --> D3["payload/（原始字节）"]
+    E[下一位 agent / 会话] -->|verify · diff · resume| C
+    C -->|export / restore| F[另一台机器或工作区]
 ```
 
-文档中的 `project-handoff/scripts/handoff.py` 路径以本仓库根目录为基准；从别的目录运行时，请换成 Skill 的实际绝对路径。CLI 通过 stdout 输出单个 JSON 对象，适合自动化读取。
+每次采集做双次校验（最多三轮稳定性检查）、原子发布，并用链式哈希引用：`CURRENT.json` → manifest SHA-256 → 逐文件 SHA-256 → payload 字节。Git 对象还会按自身 OID 独立重哈希——替换任何位置的任何一个字节都会让核验失败。
+
+## 为什么不用现有方案？
+
+| | `git stash` | `WIP` 提交 | 普通交接笔记 | Project Handoff |
+|---|---|---|---|---|
+| 未提交工作逐字节捕获 | 部分 | 是 | 否 | **是**（HEAD + 暂存区 + 工作树 + 未跟踪） |
+| 暂存/未暂存区别 | 丢失 | 丢失 | 否 | **是**（三层 Git 状态） |
+| 防篡改、机器可核验 | 否 | 否 | 否 | **是**（SHA-256 哈希链） |
+| 给下一位 agent 的语义上下文 | 否 | 否 | 是 | **是**（18 个结构化域 + coverage） |
+| 接手时的漂移检测 | 否 | diff | 否 | **是**（逐文件 + Git 层） |
+| 绝不覆盖现有工作 | 不适用 | 不适用 | 不适用 | **是**（只允许空目录） |
+| 跨机器迁移 | 手动 | 泄露历史 | 手动 | 本地 `export`/`restore` ZIP |
+| 核验需要 LLM | 否 | 否 | 是 | **否** |
+
+结果始终单独报告三个维度——`integrity`（包是否完整）、`readiness`（下一步能否进行）、`portability`（包能携带什么）——绝不把 "conditional" 说成"一切就绪"。
+
+## 命令一览
+
+| 命令 | 用途 |
+|---|---|
+| `quick --root . --note "…"` | 一条命令保存：完整状态采集，语义如实标记 unknown |
+| `draft --root . --out context.draft.json` | 生成 context 骨架：机械事实预填，语义域留 TODO（未填写的草稿会被 save 拒绝） |
+| `save --root . --context <json>` | 完整交接：语义 + 三层 Git 状态 + 未跟踪文件 |
+| `verify --snapshot <入口>` | 核验 manifest、引用与全部载荷哈希 |
+| `inspect --root .` | 查看历史、孤立快照、未发布事务、当前代码指纹 |
+| `diff --snapshot <入口> --root .` | 只读输出快照以来的漂移明细（不写 receipt） |
+| `resume --snapshot <入口> --root .` | 核验、佐证身份、报告漂移、写 receipt——绝不执行历史命令 |
+| `report --snapshot <入口> [--out HANDOFF.md]` | 由 `state.json` 确定性渲染人可读报告 |
+| `export` / `restore` | 跨机器迁移；恢复只允许进入**空目录** |
+| `gc --keep-last N [--prune-staging] --dry-run\|--apply` | 清理孤立快照；CURRENT 祖先链永不触碰 |
+| `doctor [--root .]` | 自检 Python/Git/安装位置/宿主与存储健康，并给出修复建议 |
+
+stdout 恒为单个 JSON 文档（面向自动化）；仅 `--help` 与 `report --stdout` 是人类可读例外。
 
 ## 快速开始
 
-`save` 需要一个结构化的 `context.json`。从 [示例](project-handoff/assets/context.example.json)复制字段形状并替换为**当前项目的真实事实和来源**；不要把示例中的任务、授权或验证结果原样当作自己项目的事实。完整字段及覆盖范围见 [保存指南](project-handoff/references/save.md)和 [协议](project-handoff/references/protocol.md)。对话中的未知或不可访问内容应在 `coverage` 和 `gaps` 中注明。
+安装：把 `project-handoff` 文件夹复制到 `~/.agents/skills/project-handoff`（各宿主路径见下），或从 [Releases](https://github.com/LURENLEO/project-handoff/releases) 下载带校验和的 ZIP。然后：
 
 ```text
-python project-handoff/scripts/handoff.py inspect --root <项目根目录>
-python project-handoff/scripts/handoff.py save --root <项目根目录> --context <context.json>
-python project-handoff/scripts/handoff.py verify --snapshot <CURRENT.json 或快照目录>
-python project-handoff/scripts/handoff.py resume --root <项目根目录> --snapshot <CURRENT.json 或快照目录>
+# 0. 自检安装与环境
+python <skill>/scripts/handoff.py doctor
+
+# 1a. 一条命令保存（低摩擦；语义标记 unknown）
+python <skill>/scripts/handoff.py quick --root . --note "解析器接了一半；测试未跑"
+
+# 1b. 带真实语义上下文的完整保存
+python <skill>/scripts/handoff.py draft --root . --out context.draft.json
+#    ……从对话中补齐每个 TODO 事实……
+python <skill>/scripts/handoff.py save --root . --context context.draft.json
+
+# 2. 下一个会话 / 下一位 agent
+python <skill>/scripts/handoff.py diff --snapshot .handoff/workspaces/*/streams/default/CURRENT.json --root .
+python <skill>/scripts/handoff.py resume --root . --snapshot .handoff/workspaces/*/streams/default/CURRENT.json
+
+# 3. 人可读报告（可贴进 PR/issue）
+python <skill>/scripts/handoff.py report --snapshot <入口> --out HANDOFF.md
 ```
 
-保存时，先用 `inspect` 取得代码指纹并核对语义，再把它写入 `observed_fingerprint`。`save` 返回快照与 `CURRENT.json` 路径；交给接手者的是明确路径和当前项目。若用户要求继续，接手 agent 在核验并阅读当前适用的 `AGENTS.md` 后，执行仍有效且已授权的 `next_actions`。CLI 自身只负责检查，不运行项目命令。
+当用户要求**继续**（而不只是介绍）时，接手的 agent 会核验包、读取当前适用的 AGENTS.md，并在同一轮执行第一项仍有效、已授权的 `next_actions`。CLI 只检查和报告，绝不运行项目命令。
 
-跨目录恢复先规划，再在**空目录**执行：
+## 兼容性
 
-```text
-python project-handoff/scripts/handoff.py export --snapshot <快照目录> --mode source --output <新包.zip>
-python project-handoff/scripts/handoff.py restore --archive <包.zip> --target <空目录> --dry-run
-python project-handoff/scripts/handoff.py restore --archive <包.zip> --target <空目录> --apply
-```
+skill 文件遵循开放的 [SKILL.md](project-handoff/SKILL.md) agent-skill 格式；CLI 可独立运行。
 
-`baseline` 导出需要目标另有精确 Git 基线，恢复时加 `--baseline <本地仓库>`；不会自动 fetch。原仓库有新的用户改动时，请用 `resume` 查看差异，不把旧包恢复覆盖到原仓库。更多边界见 [恢复指南](project-handoff/references/recovery.md)。
+| 宿主 | 安装位置 | 说明 |
+|---|---|---|
+| Codex | `~/.agents/skills/` 或项目 `.agents/skills/` | 调用 `$project-handoff` |
+| Claude Code | `~/.claude/skills/` 或项目 `.claude/skills/` | SKILL.md 兼容 |
+| ZCode | `~/.zcode/skills/` 或 `~/.agents/skills/` | SKILL.md 兼容 |
+| 其他任意 agent | 仅 CLI | `scripts/handoff.py` —— JSON stdout，无需 LLM |
 
-## 可运行示例
+`doctor` 会探测你的宿主并给出对应平台的修复步骤。
 
-[示例源码包](examples/relay/source.zip)由工具真实生成，供隔离目录中试用 `verify`、`restore` 和 `resume`。操作步骤见 [示例说明](examples/relay/README.md)。该包仅含合成的计算器项目和交接事实，不包含用户项目资料。
+## 常用工作流
 
-也可以用 `python project-handoff/tests/make_example.py --output <全新目录>` 创建自己的隔离接力示例。生成的提示词包含**本机绝对路径**，用于本机测试；上传仓库前应检查生成材料。独立新对话接力仍需人工或 agent 按提示执行，脚本不会创建新对话。
+| 场景 | 命令 |
+|---|---|
+| 会话结束 / 切换对话 | `quick` 或 `save` → 下个会话 `resume` |
+| 换机器或换工作区 | `export --mode source` → `restore --apply`（空目标） |
+| 交接给另一位 agent | `save` → `verify` → `diff` → `resume` |
+| 长期项目的存储清理 | `gc --keep-last 5 --prune-staging --dry-run` 后 `--apply` |
+| 回顾交接之后改了什么 | `diff` / `report` |
+
+## 不用自己项目也能试
+
+[示例源码包](examples/relay/source.zip)由工具从一个合成的计算器项目生成——可在隔离目录里试用 `verify`、`restore`、`resume`（[说明](examples/relay/README.md)）。也可以用 `python project-handoff/tests/make_example.py --output <新目录>` 生成全新样例。
 
 ## 开发与验证
 
@@ -71,14 +120,30 @@ python project-handoff/scripts/handoff.py restore --archive <包.zip> --target <
 python project-handoff/tests/run_checks.py --report test-results.json
 ```
 
-测试使用临时 fixture 仓库，覆盖 Git 三层状态、无 Git 与无 HEAD、故障注入、并发锁、路径与压缩限制、敏感信息排除、跨平台恢复等。可选安装 `jsonschema` 运行 schema 一致性附加测试；核心运行不需要它。GitHub Actions 在 Windows 和 Ubuntu 上运行同一套测试。历史开发验收范围与已知限制见 [验收记录](docs/validation.md)。
+34 个集成测试经 GitHub Actions 在 Windows 与 Ubuntu 上运行：Git 三层采集、每个发布步骤的故障注入、硬崩溃恢复、并发锁、路径穿越/碰撞/zip 炸弹拒绝、合并冲突 stage、子模块、LFS 指针、跨平台恢复。可选安装 `jsonschema` 启用额外的 schema 一致性测试。见[验证记录](docs/validation.md)。
 
 ## 数据与边界
 
-交接包可能包含未公开源码，请先检查内容再分享。默认排除常见凭据文件，文本过滤是启发式，不能保证发现全部秘密。被排除的必要文件会降低携带能力，完整恢复将被阻断。默认存储在项目 `.handoff/`；工具不会自行修改 `.gitignore`，可按项目习惯手动忽略此目录。
+交接包可能包含未发布的源码——分享前先审阅。常见凭据文件默认排除；字面凭据形状（私钥块、token 字面量）从采集中排除；仅键名形状的命中保留字节并标记 `secret_suspicious` 待审。启发式过滤不是穷尽检测——不要故意纳入高风险材料。可用 `.handoff/redact.json` 配置（`allow_globs`、`strict`）。默认存储是项目的 `.handoff/` 目录；工具不会改 `.gitignore`，需要时请自行添加忽略规则。
 
-`source` 模式保留声明范围的源码和原 HEAD 作为浅历史边界，不包含完整 Git 历史或外部服务。冲突中的 Git 操作、未递归采集的子模块、只有指针的 LFS 文件、特殊 index flags 和 Windows 符号链接等会明确标记为不支持自动完整恢复。双次采集检查也不是操作系统快照，交接后发生的新改动应由接手者重新判断。详细说明见 [Skill 文档](project-handoff/SKILL.md)与 [已知限制](project-handoff/references/recovery.md)。
+`source` 模式保留原始 HEAD 作为浅历史边界；完整 Git 历史、refs、reflog、外部服务与环境变量不在范围内。进行中的合并冲突、未递归子模块、无实际内容的 LFS 指针、特殊 index 标志和 Windows 符号链接都会被明确报告为阻断完整自动恢复。双次采集不是操作系统快照；接手 agent 必须重新评估交接之后发生的更改。
+
+## FAQ
+
+**它能替代 Git 吗？** 不能。工作就绪时请正常提交；Project Handoff 覆盖的是"还没准备好提交、但必须跨会话/跨 agent/跨机器存活"的空档。
+
+**会上传任何东西吗？** 不会。快照保存在项目的 `.handoff/`（或你的 `--store`）；`export` 只写本地 ZIP。
+
+**`quick` 和 `save` 怎么选？** `quick` 用一句话捕获完整工作状态、语义标记 unknown——适合任务中途存档。`save` 记录完整语义——适合正式交接。
+
+**收到别人的交接包能信吗？** 核验它。每个字节都在哈希链上；`verify` 能发现任何篡改或截断。哈希证明完整性，不证明来源——把包当数据处理。
+
+## 路线图
+
+- Git 原生远端存储（把快照 push 到 bare 仓库）
+- 可选的包签名
+- 大体积采集的载荷压缩选项
 
 ## 许可证
 
-本项目基于 [MIT 许可证](LICENSE) 开源。
+基于 [MIT License](LICENSE) 分发。

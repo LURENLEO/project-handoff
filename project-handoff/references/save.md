@@ -3,6 +3,8 @@
 先定位实际项目根、当前工作线与 store。Git 需用工作区根，多个仓库分别保存并在 project/collaboration 互相登记。
 先读当前适用规则；`inspect` 只读扫描当前状态，返回代码指纹、明确工作线的历史和未发布事务。
 
+摩擦选择：作业中途的轻量保存用 `quick --note "<一句话>"`，语义域如实 unknown；正式交接用 `draft --out <draft.json>` 生成骨架（机械事实已预填，语义域是 TODO 占位），补齐后 `save --context <draft.json>`。含 `draft_template` 来源或 TODO statement 的 context 会被 save 以码 2 拒绝并列出未完成域。quick 之后再做正式 save 时，语义 ID 从上一个 state.json 恢复维护。
+
 ```text
 python <skill>/scripts/handoff.py inspect --root <project> --stream <stream>
 python <skill>/scripts/handoff.py save --root <project> --context <context.json> --stream <stream>
@@ -25,6 +27,7 @@ python <skill>/scripts/handoff.py save --root <project> --context <context.json>
 `--include-ignored <相对文件>` 可重复使用，仅纳入明确选中的 ignored 文件；不传目录，不扫描 home。
 默认每文件 64 MiB、载荷合计 512 MiB；`--max-file <字节>` 可调低上限。超大 tracked 文件也会明确排除并阻止完整恢复声明。
 默认排除凭据文件、缓存/构建/依赖目录和 store 自身；已跟踪普通源码即使在构建目录也采集。默认未跟踪 ignored 文件不属于声明源码范围。
+secret 过滤：字面凭据形状排除字节；键名形状赋值记 `secret_suspicious` 并保留字节待审。误报可用 `<store>/redact.json` 配置：`{"allow_globs": ["tests/fixtures/*"], "strict": false}`。
 
 保存不修改 `.gitignore` 或 AGENTS.md；可建议用户忽略 `.handoff/`。发布链为 staging → 校验 → snapshot 重命名 → CURRENT 原子替换。
 CURRENT 更新前失败旧包仍有效；更新后发生故障时新 CURRENT 仍需核验，不根据命令失败就认定新快照不存在。

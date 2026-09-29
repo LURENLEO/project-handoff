@@ -1,4 +1,4 @@
 interface:
   display_name: "Project Handoff"
-  short_description: "保存可核验的项目交接包，保留未提交工作并引导下一位 agent 接续开发"
-  default_prompt: "使用 $project-handoff 保存当前项目的交接信息，并生成下一位 agent 的接手提示词。"
+  short_description: "保存可核验的项目交接包，保留未提交工作并引导下一位 agent 接续开发；支持 quick 一条命令交接与 draft 骨架"
+  default_prompt: "使用 $project-handoff 保存当前项目的交接信息（需要轻量保存可用 quick，需要完整语义请先 draft 再 save），并生成下一位 agent 的接手提示词。"
